@@ -39,64 +39,124 @@ async function loadMarkdown() {
 document.addEventListener('DOMContentLoaded', () => {
     // 1. Load the Markdown content
     loadMarkdown().then(() => {
-        // 2. Initialize mark.js for searching once content is loaded
         const contentDiv = document.getElementById('markdown-content');
         const markInstance = new Mark(contentDiv);
         const searchBar = document.getElementById('search-bar');
+        const searchNav = document.getElementById('search-nav');
+        const searchCount = document.getElementById('search-count');
+        const nextBtn = document.getElementById('next-search');
+        const prevBtn = document.getElementById('prev-search');
+
+        let matches = [];
+        let currentIndex = -1;
+
+        function updateSearchUI() {
+            if (matches.length > 0) {
+                searchNav.style.display = 'flex';
+                searchCount.innerText = `${currentIndex + 1} / ${matches.length}`;
+            } else {
+                searchNav.style.display = 'none';
+            }
+        }
+
+        function scrollToMatch(index) {
+            if (index < 0 || index >= matches.length) return;
+
+            // Remove previous active highlight
+            matches.forEach(m => m.classList.remove('active-highlight'));
+
+            const target = matches[index];
+            target.classList.add('active-highlight');
+
+            const offset = 120; // Extra room for the active highlight transform
+            const elementRect = target.getBoundingClientRect().top;
+            const bodyRect = document.body.getBoundingClientRect().top;
+            const offsetPosition = elementRect - bodyRect - offset;
+
+            window.scrollTo({
+                top: offsetPosition,
+                behavior: 'smooth'
+            });
+
+            currentIndex = index;
+            updateSearchUI();
+        }
 
         // Handle search input
         searchBar.addEventListener('input', (e) => {
             const searchTerm = e.target.value;
             
-            // Unmark previous results
             markInstance.unmark({
                 done: () => {
-                    // Mark new results if there's a search term
-                    if (searchTerm.trim() !== '') {
-                        markInstance.mark(searchTerm, {
-                            element: "mark",
-                            className: "highlight",
-                            separateWordSearch: false,
-                            diacritics: true,
-                            caseSensitive: false,
-                            done: () => {
-                                // Scroll the first match into view
-                                const firstMatch = contentDiv.querySelector('mark.highlight');
-                                if (firstMatch) {
-                                    const offset = 100; // Leave space for the navbar
-                                    const elementRect = firstMatch.getBoundingClientRect().top;
-                                    const bodyRect = document.body.getBoundingClientRect().top;
-                                    const offsetPosition = elementRect - bodyRect - offset;
-
-                                    window.scrollTo({
-                                        top: offsetPosition,
-                                        behavior: 'smooth'
-                                    });
-                                }
-                            }
-                        });
+                    if (searchTerm.trim().length < 2) {
+                        matches = [];
+                        currentIndex = -1;
+                        updateSearchUI();
+                        return;
                     }
+
+                    markInstance.mark(searchTerm, {
+                        element: "mark",
+                        className: "highlight",
+                        separateWordSearch: false,
+                        diacritics: true,
+                        caseSensitive: false,
+                        done: () => {
+                            matches = Array.from(contentDiv.querySelectorAll('mark.highlight'));
+                            if (matches.length > 0) {
+                                currentIndex = 0;
+                                scrollToMatch(0);
+                            } else {
+                                currentIndex = -1;
+                            }
+                            updateSearchUI();
+                        }
+                    });
                 }
             });
+        });
+
+        // Navigation Buttons
+        nextBtn.addEventListener('click', () => {
+            if (matches.length === 0) return;
+            const nextIndex = (currentIndex + 1) % matches.length;
+            scrollToMatch(nextIndex);
+        });
+
+        prevBtn.addEventListener('click', () => {
+            if (matches.length === 0) return;
+            const prevIndex = (currentIndex - 1 + matches.length) % matches.length;
+            scrollToMatch(prevIndex);
+        });
+
+        // Keyboard Shortcuts for Search
+        searchBar.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                if (e.shiftKey) {
+                    prevBtn.click();
+                } else {
+                    nextBtn.click();
+                }
+            }
         });
     });
 
     // 3. Handle Keyboard Shortcut (Shift + Space to focus search bar)
     document.addEventListener('keydown', (e) => {
-        // Check for Shift + Space
         if (e.shiftKey && e.code === 'Space') {
-            e.preventDefault(); // Prevent default page scrolling
             const searchBar = document.getElementById('search-bar');
-            searchBar.focus();
-            
-            // Optional: visual feedback scaling
-            searchBar.style.transform = 'scale(1.02)';
-            setTimeout(() => { searchBar.style.transform = 'scale(1)'; }, 150);
+            if (document.activeElement !== searchBar) {
+                e.preventDefault();
+                searchBar.focus();
+                searchBar.style.transform = 'scale(1.02)';
+                setTimeout(() => { searchBar.style.transform = 'scale(1)'; }, 150);
+            }
         }
     });
 
-    // Also handle shift + space directly within the search bar properly because when focused space might type space
-    // We already prevented default on keydown, but let's make sure it works nicely
+    // Handle shift + space directly within the search bar properly
+    // This is already subtly handled by the logic above if we focus and return.
 });
 
 function generateSidebar(container) {
